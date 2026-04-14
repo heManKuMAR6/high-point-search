@@ -1,10 +1,11 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import "tailwindcss";
+
+@theme {
+  --font-heading: var(--font-heading);
+  --font-body: var(--font-body);
+}
 
 :root {
-  --font-heading: var(--font-heading-var);
-  --font-body: var(--font-body-var);
   --bg-primary: #FBFBFD;
   --color-teal: #1F6F8B;
   --color-mint: #8FDDE7;
