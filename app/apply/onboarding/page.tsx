@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { useSession } from 'next-auth/react'
 
@@ -93,9 +93,29 @@ export default function CandidateOnboarding() {
 
     const [profile, setProfile] = useState({ first_name: '', last_name: '', phone: '', linkedin_url: '' })
     const [resumeUrl, setResumeUrl] = useState('')
+    const [uploadedFileName, setUploadedFileName] = useState<string | null>(null)
+    const [uploading, setUploading] = useState(false)
+    const [dragOver, setDragOver] = useState(false)
+    const fileInputRef = useRef<HTMLInputElement>(null)
     const [skills, setSkills] = useState<string[]>([])
     const [customSkill, setCustomSkill] = useState('')
     const [disclosures, setDisclosures] = useState({ veteran_status: false, age_50_plus: false, terms: false })
+
+    const uploadFile = async (file: File) => {
+        setUploading(true)
+        setError('')
+        const fd = new FormData()
+        fd.append('file', file)
+        const res = await fetch('/api/resume-upload', { method: 'POST', body: fd })
+        const data = await res.json()
+        if (res.ok) {
+            setResumeUrl(data.url)
+            setUploadedFileName(file.name)
+        } else {
+            setError(data.error || 'Upload failed')
+        }
+        setUploading(false)
+    }
 
     const next = () => { setError(''); setStep(s => Math.min(s + 1, 4)) }
     const back = () => { setError(''); setStep(s => Math.max(s - 1, 0)) }
@@ -166,6 +186,8 @@ export default function CandidateOnboarding() {
     }
 
     return (
+        <>
+        <style>{`@keyframes spin { to { transform: rotate(360deg) } }`}</style>
         <div style={{ minHeight: '100vh', background: '#FBFBFD', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '40px 20px', fontFamily: 'var(--font-body-var)' }}>
             {/* Top logo */}
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 36 }}>
@@ -211,16 +233,77 @@ export default function CandidateOnboarding() {
                 {step === 1 && (
                     <div>
                         <p style={{ fontSize: '0.9rem', color: '#6b6b70', marginBottom: 20, lineHeight: 1.6 }}>
-                            Paste a link to your resume (Google Drive, Dropbox, etc.) or your LinkedIn profile so employers can review your background.
+                            Upload your resume or paste a link to it. PDF and Word documents accepted (max 5 MB).
                         </p>
+
+                        {/* Drop zone */}
+                        <div
+                            onClick={() => !uploading && fileInputRef.current?.click()}
+                            onDragOver={e => { e.preventDefault(); setDragOver(true) }}
+                            onDragLeave={() => setDragOver(false)}
+                            onDrop={e => {
+                                e.preventDefault()
+                                setDragOver(false)
+                                const f = e.dataTransfer.files[0]
+                                if (f) uploadFile(f)
+                            }}
+                            style={{
+                                border: `2px dashed ${dragOver ? '#1F6F8B' : uploadedFileName ? '#22c55e' : '#C5C5C7'}`,
+                                borderRadius: 16,
+                                padding: '36px 24px',
+                                textAlign: 'center',
+                                cursor: uploading ? 'default' : 'pointer',
+                                background: dragOver ? 'rgba(31,111,139,0.04)' : uploadedFileName ? 'rgba(34,197,94,0.04)' : '#FAFAFA',
+                                transition: 'all 0.2s',
+                                marginBottom: 20,
+                            }}
+                        >
+                            <input
+                                ref={fileInputRef}
+                                type="file"
+                                accept=".pdf,.doc,.docx"
+                                style={{ display: 'none' }}
+                                onChange={e => { const f = e.target.files?.[0]; if (f) uploadFile(f) }}
+                            />
+
+                            {uploading ? (
+                                <div>
+                                    <div style={{ width: 32, height: 32, border: '3px solid #E5E5E7', borderTopColor: '#1F6F8B', borderRadius: '50%', animation: 'spin 0.8s linear infinite', margin: '0 auto 10px' }} />
+                                    <p style={{ fontSize: '0.875rem', color: '#86868b', margin: 0 }}>Uploading…</p>
+                                </div>
+                            ) : uploadedFileName ? (
+                                <div>
+                                    <div style={{ fontSize: '2rem', marginBottom: 6 }}>✅</div>
+                                    <p style={{ fontSize: '0.9rem', fontWeight: 500, color: '#166534', margin: '0 0 4px' }}>{uploadedFileName}</p>
+                                    <p style={{ fontSize: '0.78rem', color: '#86868b', margin: 0 }}>Click to replace</p>
+                                </div>
+                            ) : (
+                                <div>
+                                    <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#86868b" strokeWidth="1.5" style={{ margin: '0 auto 10px', display: 'block' }}>
+                                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                                        <polyline points="17 8 12 3 7 8" />
+                                        <line x1="12" y1="3" x2="12" y2="15" />
+                                    </svg>
+                                    <p style={{ fontSize: '0.9rem', color: '#1D1D1F', margin: '0 0 4px' }}>
+                                        Drag your resume here
+                                    </p>
+                                    <p style={{ fontSize: '0.8rem', color: '#86868b', margin: 0 }}>
+                                        or <span style={{ color: '#1F6F8B', textDecoration: 'underline' }}>click to browse</span> · PDF or Word, max 5 MB
+                                    </p>
+                                </div>
+                            )}
+                        </div>
+
+                        {/* Divider */}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 20 }}>
+                            <div style={{ flex: 1, height: 1, background: '#E5E5E7' }} />
+                            <span style={{ fontSize: '0.78rem', color: '#86868b' }}>or paste a link</span>
+                            <div style={{ flex: 1, height: 1, background: '#E5E5E7' }} />
+                        </div>
+
                         <InputField label="Resume URL" name="resume_url" value={resumeUrl}
                             placeholder="https://drive.google.com/file/your-resume"
-                            onChange={e => setResumeUrl(e.target.value)} />
-                        <div style={{ background: 'rgba(31,111,139,0.05)', border: '1px dashed rgba(31,111,139,0.3)', borderRadius: 12, padding: '16px 20px', marginTop: 8 }}>
-                            <p style={{ fontSize: '0.82rem', color: '#1F6F8B', margin: 0 }}>
-                                💡 Make sure your link is set to <strong>"Anyone with link can view"</strong> before submitting.
-                            </p>
-                        </div>
+                            onChange={e => { setResumeUrl(e.target.value); setUploadedFileName(null) }} />
                     </div>
                 )}
 
@@ -292,7 +375,7 @@ export default function CandidateOnboarding() {
                                 { label: 'Phone', value: profile.phone || '—' },
                                 { label: 'LinkedIn', value: profile.linkedin_url || '—' },
                             ]},
-                            { section: 'Resume', items: [{ label: 'URL', value: resumeUrl || '—' }] },
+                            { section: 'Resume', items: [{ label: 'File', value: uploadedFileName || resumeUrl || '—' }] },
                             { section: 'Skills', items: [{ label: 'Selected', value: skills.join(', ') || '—' }] },
                             { section: 'Disclosures', items: [
                                 { label: 'Veteran', value: disclosures.veteran_status ? 'Yes' : 'No' },
@@ -339,5 +422,6 @@ export default function CandidateOnboarding() {
                 </div>
             </div>
         </div>
+        </>
     )
 }

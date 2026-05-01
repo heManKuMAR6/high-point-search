@@ -1,11 +1,25 @@
 'use client'
 
-import { useState } from 'react'
+import { Suspense, useState } from 'react'
 import { signIn } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
+import { useSearchParams } from 'next/navigation'
 
 export default function CandidatePage() {
+  return (
+    <Suspense>
+      <CandidatePageInner />
+    </Suspense>
+  )
+}
+
+function CandidatePageInner() {
     const router = useRouter()
+    const searchParams = useSearchParams()
+    const utmSource = searchParams.get('utm_source')
+    const utmJob = searchParams.get('utm_job')
+    const utmEmployer = searchParams.get('utm_employer')
+
     const [mode, setMode] = useState<'signin' | 'signup'>('signin')
     const [loading, setLoading] = useState(false)
     const [error, setError] = useState('')
@@ -68,6 +82,22 @@ export default function CandidatePage() {
                 setError('Account created but sign in failed. Please sign in manually.')
                 setLoading(false)
                 return
+            }
+
+            // Store UTM attribution on the candidate record. Non-fatal if it fails.
+            if (data.userId && (utmSource || utmJob)) {
+                try {
+                    await fetch(`/api/candidates/${data.userId}`, {
+                        method: 'PATCH',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            ...(utmSource && { utm_source: utmSource }),
+                            ...(utmJob && { utm_job: utmJob }),
+                        }),
+                    })
+                } catch {
+                    // UTM attribution loss is acceptable; do not block onboarding
+                }
             }
 
             router.push('/apply/onboarding')

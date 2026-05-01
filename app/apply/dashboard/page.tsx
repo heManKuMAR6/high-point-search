@@ -43,11 +43,22 @@ export default function CandidateDashboard() {
     useEffect(() => {
         if (!session?.user?.id) return
         const load = async () => {
-            const [cRes, aRes] = await Promise.all([
-                fetch(`/api/candidates/${session.user.id}`),
-                fetch(`/api/applications?candidate_id=${session.user.id}`)
-            ])
-            if (cRes.ok) setCandidate(await cRes.json())
+            const cRes = await fetch(`/api/candidates/${session.user.id}`)
+
+            if (!cRes.ok) {
+                router.replace('/apply/onboarding')
+                return
+            }
+
+            const candidateData = await cRes.json()
+            if (!candidateData.onboarding_complete) {
+                router.replace('/apply/onboarding')
+                return
+            }
+
+            setCandidate(candidateData)
+
+            const aRes = await fetch(`/api/applications?candidate_id=${session.user.id}`)
             if (aRes.ok) setApplications(await aRes.json())
             setLoading(false)
         }
@@ -63,7 +74,7 @@ export default function CandidateDashboard() {
     }
 
     const name = candidate ? `${candidate.first_name} ${candidate.last_name}` : session.user.email || ''
-    const initials = candidate ? `${candidate.first_name[0]}${candidate.last_name[0]}`.toUpperCase() : '?'
+    const initials = candidate?.first_name && candidate?.last_name ? `${candidate.first_name[0]}${candidate.last_name[0]}`.toUpperCase() : '?'
     const stats = {
         submitted: applications.length,
         interview: applications.filter(a => a.status === 'interview').length,

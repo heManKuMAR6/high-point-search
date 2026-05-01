@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useSession, signOut } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
@@ -26,7 +26,7 @@ function InputField({ label, name, value, onChange, type = 'text', placeholder =
     return (
         <div style={{ marginBottom: 18 }}>
             <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 500, color: '#1D1D1F', marginBottom: 6 }}>{label}</label>
-            <input type={type} name={name} value={value} onChange={onChange} placeholder={placeholder}
+            <input type={type} name={name} value={value ?? ''} onChange={onChange} placeholder={placeholder}
                 onFocus={() => setFocused(true)} onBlur={() => setFocused(false)}
                 style={{ width: '100%', padding: '11px 15px', borderRadius: 11, border: `1.5px solid ${focused ? '#1F6F8B' : '#E5E5E7'}`, fontSize: '0.9rem', outline: 'none', background: '#FAFAFA', transition: 'border 0.2s', boxSizing: 'border-box' }}
             />
@@ -40,6 +40,9 @@ export default function CandidateProfile() {
     const [form, setForm] = useState<Candidate>({ first_name: '', last_name: '', phone: '', linkedin_url: '', resume_url: '', skills: [], veteran_status: false, age_50_plus: false })
     const [loading, setLoading] = useState(true)
     const [saving, setSaving] = useState(false)
+    const [uploading, setUploading] = useState(false)
+    const [dragOver, setDragOver] = useState(false)
+    const fileInputRef = useRef<HTMLInputElement>(null)
     const [deleting, setDeleting] = useState(false)
     const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
     const [success, setSuccess] = useState(false)
@@ -60,6 +63,24 @@ export default function CandidateProfile() {
     const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         setForm(f => ({ ...f, [e.target.name]: e.target.value }))
     }
+
+    const uploadResume = async (file: File) => {
+        setUploading(true)
+        setError('')
+        const fd = new FormData()
+        fd.append('file', file)
+        const res = await fetch('/api/resume-upload', { method: 'POST', body: fd })
+        const data = await res.json()
+        if (res.ok) {
+            setForm(f => ({ ...f, resume_url: data.url }))
+        } else {
+            setError(data.error || 'Upload failed')
+        }
+        setUploading(false)
+    }
+
+    const isStoredFile = (url: string) =>
+        url && url.includes('.supabase.co/storage/')
 
     const toggleSkill = (skill: string) => {
         setForm(f => ({
@@ -118,7 +139,57 @@ export default function CandidateProfile() {
                     </div>
                     <InputField label="Phone" name="phone" value={form.phone} onChange={handleChange} type="tel" placeholder="+1 (555) 000-0000" />
                     <InputField label="LinkedIn URL" name="linkedin_url" value={form.linkedin_url} onChange={handleChange} placeholder="https://linkedin.com/in/..." />
-                    <InputField label="Resume URL" name="resume_url" value={form.resume_url} onChange={handleChange} placeholder="https://drive.google.com/..." />
+                    {/* Resume — show friendly UI for stored files, URL input for external links */}
+                    <div style={{ marginBottom: 18 }}>
+                        <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 500, color: '#1D1D1F', marginBottom: 6 }}>Resume</label>
+
+                        {isStoredFile(form.resume_url) ? (
+                            // Stored file — show pill + replace option
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', borderRadius: 11, border: '1.5px solid #BBF7D0', background: '#F0FFF4' }}>
+                                <span style={{ fontSize: '1rem' }}>📄</span>
+                                <span style={{ fontSize: '0.875rem', color: '#166534', flex: 1 }}>Resume on file</span>
+                                <a href={form.resume_url} target="_blank" rel="noopener noreferrer" style={{ fontSize: '0.78rem', color: '#1F6F8B', textDecoration: 'none' }}>View</a>
+                                <span style={{ color: '#C5C5C7', fontSize: '0.75rem' }}>·</span>
+                                <button onClick={() => fileInputRef.current?.click()} style={{ fontSize: '0.78rem', color: '#6b6b70', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>
+                                    Replace
+                                </button>
+                                <button onClick={() => setForm(f => ({ ...f, resume_url: '' }))} style={{ fontSize: '0.78rem', color: '#cc4444', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>
+                                    Remove
+                                </button>
+                                <input ref={fileInputRef} type="file" accept=".pdf,.doc,.docx" style={{ display: 'none' }}
+                                    onChange={e => { const f = e.target.files?.[0]; if (f) uploadResume(f) }} />
+                            </div>
+                        ) : (
+                            // No stored file — show drop zone + URL input
+                            <>
+                                <div
+                                    onClick={() => !uploading && fileInputRef.current?.click()}
+                                    onDragOver={e => { e.preventDefault(); setDragOver(true) }}
+                                    onDragLeave={() => setDragOver(false)}
+                                    onDrop={e => { e.preventDefault(); setDragOver(false); const f = e.dataTransfer.files[0]; if (f) uploadResume(f) }}
+                                    style={{
+                                        border: `2px dashed ${dragOver ? '#1F6F8B' : '#C5C5C7'}`,
+                                        borderRadius: 11, padding: '20px', textAlign: 'center',
+                                        cursor: uploading ? 'default' : 'pointer',
+                                        background: dragOver ? 'rgba(31,111,139,0.04)' : '#FAFAFA',
+                                        marginBottom: 10, transition: 'all 0.2s',
+                                    }}
+                                >
+                                    <input ref={fileInputRef} type="file" accept=".pdf,.doc,.docx" style={{ display: 'none' }}
+                                        onChange={e => { const f = e.target.files?.[0]; if (f) uploadResume(f) }} />
+                                    {uploading ? (
+                                        <span style={{ fontSize: '0.85rem', color: '#86868b' }}>Uploading…</span>
+                                    ) : (
+                                        <span style={{ fontSize: '0.85rem', color: '#86868b' }}>
+                                            Drag a PDF/Word file here or{' '}
+                                            <span style={{ color: '#1F6F8B', textDecoration: 'underline' }}>click to browse</span>
+                                        </span>
+                                    )}
+                                </div>
+                                <InputField label="Or paste a link" name="resume_url" value={form.resume_url ?? ''} onChange={handleChange} placeholder="https://drive.google.com/..." />
+                            </>
+                        )}
+                    </div>
                 </div>
 
                 {/* Skills */}

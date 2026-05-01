@@ -8,20 +8,50 @@ export async function GET(req: NextRequest) {
 
     const { searchParams } = new URL(req.url)
     const job_id = searchParams.get('job_id')
-    const candidate_id = searchParams.get('candidate_id')
+    const candidate_id = searchParams.get('candidate_id') // this is the user_id from the client
 
-    let query = supabaseAdmin.from('applications').select(`
-        *,
-        jobs(id, title, location, job_type),
-        candidates(id, first_name, last_name, resume_url, skills)
-    `)
+    if (candidate_id) {
+        // Resolve user_id → candidates.id (the FK stored on applications)
+        const { data: candidateRecord, error: cErr } = await supabaseAdmin
+            .from('candidates')
+            .select('id')
+            .eq('user_id', candidate_id)
+            .single()
 
-    if (job_id) query = query.eq('job_id', job_id)
-    if (candidate_id) query = query.eq('candidate_id', candidate_id)
+        if (cErr || !candidateRecord) {
+            // No candidate profile yet — return empty list rather than 500
+            return NextResponse.json([])
+        }
 
-    const { data, error } = await query.order('created_at', { ascending: false })
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-    return NextResponse.json(data)
+        const { data, error } = await supabaseAdmin
+            .from('applications')
+            .select('*, jobs(id, title, location, job_type)')
+            .eq('candidate_id', candidateRecord.id)
+            .order('created_at', { ascending: false })
+
+        if (error) {
+            console.error('[applications GET candidate]', error)
+            return NextResponse.json({ error: error.message }, { status: 500 })
+        }
+        return NextResponse.json(data ?? [])
+    }
+
+    if (job_id) {
+        // Employer viewing applicants for a job — include candidate info from users
+        const { data, error } = await supabaseAdmin
+            .from('applications')
+            .select('*, candidates(id, skills, user_id, users(email, name))')
+            .eq('job_id', job_id)
+            .order('created_at', { ascending: false })
+
+        if (error) {
+            console.error('[applications GET job]', error)
+            return NextResponse.json({ error: error.message }, { status: 500 })
+        }
+        return NextResponse.json(data ?? [])
+    }
+
+    return NextResponse.json({ error: 'job_id or candidate_id required' }, { status: 400 })
 }
 
 export async function POST(req: NextRequest) {

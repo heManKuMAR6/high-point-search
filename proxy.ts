@@ -26,9 +26,9 @@ export default auth((req) => {
         }
     }
 
-    if (adminSlug && pathname.startsWith(`/${adminSlug}`)) {
+    if (adminSlug && pathname.startsWith(`/${adminSlug}/`)) {
         if (!role || role !== 'superadmin') {
-            return NextResponse.redirect(new URL('/apply', req.url))
+            return NextResponse.redirect(new URL(`/${adminSlug}`, req.url))
         }
     }
 
