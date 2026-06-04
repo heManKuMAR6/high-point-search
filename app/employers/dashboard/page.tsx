@@ -10,7 +10,7 @@ type Job = {
 }
 
 type Application = {
-    id: string; status: string; created_at: string; employer_feedback: string
+    id: string; job_id: string; status: string; created_at: string; employer_feedback: string
     candidates: { id: string; first_name: string; last_name: string; resume_url: string; skills: string[] }
     jobs: { title: string }
 }
@@ -54,7 +54,7 @@ export default function EmployerDashboard() {
                 setEmployer(emp)
                 const [jRes, aRes] = await Promise.all([
                     fetch(`/api/jobs?employer_id=${emp.id}`),
-                    fetch(`/api/applications`),
+                    fetch(`/api/applications?employer_id=${emp.id}`),
                 ])
                 if (jRes.ok) setJobs(await jRes.json())
                 if (aRes.ok) setApplications(await aRes.json())
@@ -79,13 +79,13 @@ export default function EmployerDashboard() {
 
     const handleFeedbackSave = async (appId: string, status: string) => {
         setSavingFeedback(appId)
-        const feedback = feedbackMap[appId] || ''
-        await fetch('/api/applications', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: appId, status, employer_feedback: feedback }) })
+        const feedback = feedbackMap[appId] ?? ''
+        await fetch(`/api/applications/${appId}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status, employer_feedback: feedback }) })
         setApplications(prev => prev.map(a => a.id === appId ? { ...a, status, employer_feedback: feedback } : a))
         setSavingFeedback(null)
     }
 
-    const filteredApps = selectedJobId ? applications.filter(a => (a as any).job_id === selectedJobId) : applications
+    const filteredApps = selectedJobId ? applications.filter(a => a.job_id === selectedJobId) : applications
 
     if (loading) return <div style={{ minHeight: '100vh', background: '#FBFBFD', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><div style={{ color: '#86868b' }}>Loading...</div></div>
 
@@ -161,17 +161,22 @@ export default function EmployerDashboard() {
                         ) : jobs.map(job => (
                             <div key={job.id} style={{ background: 'white', borderRadius: 18, padding: '22px 28px', border: '1px solid #EBEBEB', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16 }}>
                                 <div>
-                                    <div style={{ fontSize: '1rem', fontWeight: 500, color: '#1D1D1F', marginBottom: 4 }}>{job.title}</div>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                                        <div style={{ fontSize: '1rem', fontWeight: 500, color: '#1D1D1F' }}>{job.title}</div>
+                                        <span style={{ padding: '2px 10px', borderRadius: 100, fontSize: '0.72rem', fontWeight: 500, background: job.status === 'active' ? 'rgba(31,139,80,0.1)' : 'rgba(134,134,139,0.1)', color: job.status === 'active' ? '#1F8B50' : '#86868b' }}>
+                                            {job.status === 'active' ? 'Active' : job.status}
+                                        </span>
+                                    </div>
                                     <div style={{ fontSize: '0.8rem', color: '#86868b' }}>
                                         {job.location || 'Remote'} · {job.job_type?.replace('-', ' ')} · Posted {new Date(job.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
                                     </div>
                                 </div>
                                 <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                                    <div style={{ padding: '5px 14px', borderRadius: 100, background: 'rgba(31,139,80,0.08)', color: '#1F8B50', fontSize: '0.78rem', fontWeight: 500 }}>
+                                    <div style={{ padding: '5px 14px', borderRadius: 100, background: 'rgba(31,111,139,0.08)', color: '#1F6F8B', fontSize: '0.78rem', fontWeight: 500 }}>
                                         {job.applications?.[0]?.count ?? 0} applicant{job.applications?.[0]?.count !== 1 ? 's' : ''}
                                     </div>
                                     <button onClick={() => { setSelectedJobId(job.id); setActiveTab('submissions') }} style={{ fontSize: '0.82rem', color: '#1F6F8B', border: '1px solid rgba(31,111,139,0.25)', borderRadius: 8, padding: '6px 14px', background: 'rgba(31,111,139,0.04)', cursor: 'pointer' }}>
-                                        View submissions →
+                                        View applicants →
                                     </button>
                                 </div>
                             </div>

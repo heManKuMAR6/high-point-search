@@ -8,7 +8,8 @@ export async function GET(req: NextRequest) {
 
     const { searchParams } = new URL(req.url)
     const job_id = searchParams.get('job_id')
-    const candidate_id = searchParams.get('candidate_id') // this is the user_id from the client
+    const candidate_id = searchParams.get('candidate_id') // user_id from the client
+    const employer_id = searchParams.get('employer_id')   // employers.id from the client
 
     if (candidate_id) {
         // Resolve user_id → candidates.id (the FK stored on applications)
@@ -36,11 +37,35 @@ export async function GET(req: NextRequest) {
         return NextResponse.json(data ?? [])
     }
 
-    if (job_id) {
-        // Employer viewing applicants for a job — include candidate info from users
+    if (employer_id) {
+        // Employer viewing all submissions across their jobs
+        const { data: jobRows, error: jErr } = await supabaseAdmin
+            .from('jobs')
+            .select('id')
+            .eq('employer_id', employer_id)
+
+        if (jErr) return NextResponse.json({ error: jErr.message }, { status: 500 })
+
+        const jobIds = (jobRows ?? []).map((j: { id: string }) => j.id)
+        if (jobIds.length === 0) return NextResponse.json([])
+
         const { data, error } = await supabaseAdmin
             .from('applications')
-            .select('*, candidates(id, skills, user_id, users(email, name))')
+            .select('*, candidates(id, first_name, last_name, skills, resume_url), jobs(title)')
+            .in('job_id', jobIds)
+            .order('created_at', { ascending: false })
+
+        if (error) {
+            console.error('[applications GET employer]', error)
+            return NextResponse.json({ error: error.message }, { status: 500 })
+        }
+        return NextResponse.json(data ?? [])
+    }
+
+    if (job_id) {
+        const { data, error } = await supabaseAdmin
+            .from('applications')
+            .select('*, candidates(id, first_name, last_name, skills, resume_url), jobs(title)')
             .eq('job_id', job_id)
             .order('created_at', { ascending: false })
 
@@ -51,7 +76,7 @@ export async function GET(req: NextRequest) {
         return NextResponse.json(data ?? [])
     }
 
-    return NextResponse.json({ error: 'job_id or candidate_id required' }, { status: 400 })
+    return NextResponse.json({ error: 'employer_id, job_id, or candidate_id required' }, { status: 400 })
 }
 
 export async function POST(req: NextRequest) {
@@ -60,10 +85,9 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    const { job_id } = await req.json()
+    const { job_id, cover_note, resume_url } = await req.json()
     if (!job_id) return NextResponse.json({ error: 'job_id is required' }, { status: 400 })
 
-    // Get candidate record
     const { data: candidate } = await supabaseAdmin
         .from('candidates')
         .select('id')
@@ -72,19 +96,24 @@ export async function POST(req: NextRequest) {
 
     if (!candidate) return NextResponse.json({ error: 'Candidate not found' }, { status: 404 })
 
-    // Check for duplicate application
     const { data: existing } = await supabaseAdmin
         .from('applications')
         .select('id')
         .eq('candidate_id', candidate.id)
         .eq('job_id', job_id)
-        .single()
+        .maybeSingle()
 
     if (existing) return NextResponse.json({ error: 'Already applied to this job' }, { status: 400 })
 
     const { data, error } = await supabaseAdmin
         .from('applications')
-        .insert({ candidate_id: candidate.id, job_id, status: 'submitted' })
+        .insert({
+            candidate_id: candidate.id,
+            job_id,
+            status: 'submitted',
+            cover_note: cover_note ?? null,
+            resume_url: resume_url ?? null,
+        })
         .select()
         .single()
 
